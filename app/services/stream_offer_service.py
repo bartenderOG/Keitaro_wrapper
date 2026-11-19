@@ -54,8 +54,11 @@ class StreamOfferService:
         if stream is None:
             raise ValueError("Stream not found")
 
-        offer = self.db.get(Offer, offer_id)
-
+        offer = (
+            self.db.query(Offer)
+            .filter(Offer.keitaro_id == offer_id)
+            .first()
+        )
         if offer is None:
             raise ValueError("Offer not found")
 
@@ -65,7 +68,7 @@ class StreamOfferService:
             self.db.query(StreamOffer)
             .filter(
                 StreamOffer.stream_id == stream_id,
-                StreamOffer.offer_id == offer_id,
+                StreamOffer.offer_id == offer.id,
             )
             .first()
         )
@@ -78,7 +81,7 @@ class StreamOfferService:
         else:
             stream_offer = StreamOffer(
                 stream_id=stream_id,
-                offer_id=offer_id,
+                offer_id=offer.id,
                 weight=0,
                 is_pinned=False,
                 status="active",
