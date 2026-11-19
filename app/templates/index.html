@@ -1,0 +1,448 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Keitaro Wrapper</title>
+</head>
+<body>
+<h2>Create Campaign</h2>
+
+<form id="create-campaign-form">
+    <div>
+        <label>
+            Campaign name:
+            <input
+                type="text"
+                id="campaign-name"
+                placeholder="test_nasirdinov_..."
+                required
+            >
+        </label>
+    </div>
+
+    <br>
+
+    <div>
+        <label>
+            Country:
+            <input
+                type="text"
+                id="campaign-geo"
+                value="AU"
+                maxlength="2"
+                required
+            >
+        </label>
+    </div>
+
+    <br>
+
+    <div>
+        <label>
+            Domain:
+            <select id="campaign-domain" required></select>
+        </label>
+    </div>
+
+    <br>
+
+    <div>
+        <label>
+            Group:
+            <select id="campaign-group" required></select>
+        </label>
+    </div>
+
+    <br>
+
+    <div>
+        <label>
+            Traffic source:
+            <select id="campaign-traffic-source" required></select>
+        </label>
+    </div>
+
+    <br>
+
+    <div>
+        <label>
+            Offer:
+            <select id="campaign-offer" required></select>
+        </label>
+    </div>
+
+    <br>
+
+    <button type="submit">
+        Create Campaign
+    </button>
+</form>
+
+<p id="create-campaign-result"></p>
+
+<hr>
+    <h1>Keitaro Wrapper</h1>
+
+    <h2>Campaigns</h2>
+
+    <div id="campaigns">
+        Loading...
+    </div>
+
+    <h2>Streams</h2>
+
+    <div id="streams">
+        Select a campaign.
+    </div>
+
+    <script>
+        async function loadCampaigns() {
+            const response = await fetch("/campaigns");
+            const campaigns = await response.json();
+
+            const container = document.getElementById("campaigns");
+
+            container.innerHTML = "";
+
+            campaigns.forEach(campaign => {
+                const item = document.createElement("div");
+
+ item.innerHTML = `
+    <strong>${campaign.name}</strong>
+    — Keitaro ID: ${campaign.keitaro_id}
+
+    <button onclick="loadStreams(${campaign.id})">
+        Open
+    </button>
+
+    <button onclick="fetchStreams(${campaign.id})">
+        Fetch Streams
+    </button>
+`;
+
+                container.appendChild(item);
+            });
+        }
+
+        async function fetchStreams(campaignId) {
+    const response = await fetch(
+        `/campaigns/${campaignId}/sync`,
+        { method: "POST" }
+    );
+
+    const result = await response.json();
+    console.log(result);
+
+    await loadStreams(campaignId);
+}
+
+        async function loadStreams(campaignId) {
+            const response = await fetch(`/campaigns/${campaignId}/streams`);
+            const streams = await response.json();
+
+            const container = document.getElementById("streams");
+
+            container.innerHTML = "";
+
+            streams.forEach(stream => {
+                const item = document.createElement("div");
+
+ let offersHtml = "";
+
+if (stream.offers.length > 0) {
+    offersHtml = "<ul>";
+
+stream.offers.forEach(offer => {
+    offersHtml += `
+        <li>
+            ${offer.name}
+            — ${offer.weight}%
+            — ${offer.status}
+            — pinned: ${offer.is_pinned}
+
+            ${
+                offer.status === "active"
+                    ? (
+                        offer.is_pinned
+                            ? `<button onclick="unpinOffer(${campaignId}, ${stream.id}, ${offer.id})">
+                                   Unpin
+                               </button>`
+                            : `<button onclick="pinOffer(${campaignId}, ${stream.id}, ${offer.id})">
+                                   Pin
+                               </button>`
+                    )
+                    : ""
+            }
+
+${
+    offer.status === "active"
+        ? `<button onclick="removeOffer(${campaignId}, ${stream.id}, ${offer.id})">
+               Remove
+           </button>`
+        : `<button onclick="restoreOffer(${campaignId}, ${stream.id}, ${offer.id})">
+               Bring Back
+           </button>`
+}
+        </li>
+    `;
+});
+
+    offersHtml += "</ul>";
+} else {
+    offersHtml = "<p>No offers</p>";
+}
+item.innerHTML = `
+    <h3>${stream.name}</h3>
+
+    <p>
+        Keitaro ID: ${stream.keitaro_id}
+        <br>
+        Position: ${stream.position}
+        <br>
+        Unpublished changes: ${stream.has_unpublished_changes}
+    </p>
+
+    ${offersHtml}
+
+${
+    stream.name === "Offers"
+        ? `
+            <button onclick="showAddOffer(${campaignId}, ${stream.id})">
+                Add Offer
+            </button>
+
+            ${
+                stream.has_unpublished_changes
+                    ? `
+                        <button onclick="pushStream(${campaignId}, ${stream.id})">
+                            Push to KT
+                        </button>
+
+                        <button onclick="cancelChanges(${campaignId}, ${stream.id})">
+                            Cancel Changes
+                        </button>
+                      `
+                    : ""
+            }
+          `
+        : ""
+}
+`;
+
+                container.appendChild(item);
+            });
+        }
+async function showAddOffer(campaignId, streamId) {
+    const response = await fetch("/campaigns/offers");
+    const offers = await response.json();
+
+    const container = document.getElementById("streams");
+
+    const select = document.createElement("select");
+    select.id = `offer-select-${streamId}`;
+
+    offers.forEach(offer => {
+        const option = document.createElement("option");
+        option.value = offer.id;
+        option.textContent = `${offer.name} (Keitaro ID: ${offer.id})`;
+        select.appendChild(option);
+    });
+
+    const button = document.createElement("button");
+    button.textContent = "Add";
+
+    button.onclick = async () => {
+        const offerId = select.value;
+
+        const addResponse = await fetch(
+            `/campaigns/${campaignId}/streams/${streamId}/offers/${offerId}`,
+            {
+                method: "POST"
+            }
+        );
+
+        const result = await addResponse.json();
+        console.log(result);
+
+        await loadStreams(campaignId);
+    };
+
+    container.appendChild(document.createElement("br"));
+    container.appendChild(select);
+    container.appendChild(button);
+}
+
+async function pinOffer(campaignId, streamId, offerId) {
+    const response = await fetch(
+        `/campaigns/${campaignId}/streams/${streamId}/offers/${offerId}/pin`,
+        { method: "POST" }
+    );
+
+    const result = await response.json();
+    console.log(result);
+
+    await loadStreams(campaignId);
+}
+
+
+async function unpinOffer(campaignId, streamId, offerId) {
+    const response = await fetch(
+        `/campaigns/${campaignId}/streams/${streamId}/offers/${offerId}/unpin`,
+        { method: "POST" }
+    );
+
+    const result = await response.json();
+    console.log(result);
+
+    await loadStreams(campaignId);
+}
+
+
+async function removeOffer(campaignId, streamId, offerId) {
+    const response = await fetch(
+        `/campaigns/${campaignId}/streams/${streamId}/offers/${offerId}`,
+        {
+            method: "DELETE"
+        }
+    );
+
+    const result = await response.json();
+
+    console.log(result);
+
+    await loadStreams(campaignId);
+}
+
+async function restoreOffer(campaignId, streamId, offerId) {
+    const response = await fetch(
+        `/campaigns/${campaignId}/streams/${streamId}/offers/${offerId}/restore`,
+        {
+            method: "POST"
+        }
+    );
+
+    const result = await response.json();
+
+    console.log(result);
+
+    await loadStreams(campaignId);
+}
+
+async function pushStream(campaignId, streamId) {
+    const response = await fetch(
+        `/campaigns/${campaignId}/streams/${streamId}/push`,
+        {
+            method: "POST"
+        }
+    );
+
+    const result = await response.json();
+
+    console.log(result);
+
+    await loadStreams(campaignId);
+}
+
+async function cancelChanges(campaignId, streamId) {
+    const response = await fetch(
+        `/campaigns/${campaignId}/streams/${streamId}/cancel`,
+        { method: "POST" }
+    );
+
+    const result = await response.json();
+    console.log(result);
+
+    await loadStreams(campaignId);
+}
+
+async function loadResources() {
+    const response = await fetch("/campaigns/resources");
+    const resources = await response.json();
+
+    const domainSelect = document.getElementById("campaign-domain");
+    const groupSelect = document.getElementById("campaign-group");
+    const trafficSourceSelect = document.getElementById("campaign-traffic-source");
+    const offerSelect = document.getElementById("campaign-offer");
+
+    domainSelect.innerHTML = "";
+    groupSelect.innerHTML = "";
+    trafficSourceSelect.innerHTML = "";
+    offerSelect.innerHTML = "";
+
+    resources.domains.forEach(domain => {
+        const option = document.createElement("option");
+
+        option.value = domain.id;
+        option.textContent = `${domain.name} (ID: ${domain.id})`;
+
+        domainSelect.appendChild(option);
+    });
+
+    resources.groups.forEach(group => {
+        const option = document.createElement("option");
+
+        option.value = group.id;
+        option.textContent = `${group.name} (ID: ${group.id})`;
+
+        groupSelect.appendChild(option);
+    });
+
+    resources.traffic_sources.forEach(source => {
+        const option = document.createElement("option");
+
+        option.value = source.id;
+        option.textContent = `${source.name} (ID: ${source.id})`;
+
+        trafficSourceSelect.appendChild(option);
+    });
+
+    resources.offers.forEach(offer => {
+        const option = document.createElement("option");
+
+        option.value = offer.id;
+        option.textContent = `${offer.name} (ID: ${offer.id})`;
+
+        offerSelect.appendChild(option);
+    });
+}
+        loadResources();
+
+        document
+    .getElementById("create-campaign-form")
+    .addEventListener("submit", async function(event) {
+        event.preventDefault();
+
+        const name = document.getElementById("campaign-name").value;
+        const geoCode = document.getElementById("campaign-geo").value;
+        const domainId = document.getElementById("campaign-domain").value;
+        const groupId = document.getElementById("campaign-group").value;
+        const trafficSourceId = document.getElementById("campaign-traffic-source").value;
+        const offerId = document.getElementById("campaign-offer").value;
+
+        const result = document.getElementById("create-campaign-result");
+
+        result.textContent = "Creating campaign...";
+
+        const response = await fetch(
+            `/campaigns?name=${encodeURIComponent(name)}&geo_code=${encodeURIComponent(geoCode)}&offer_keitaro_id=${offerId}&domain_id=${domainId}&group_id=${groupId}&traffic_source_id=${trafficSourceId}`,
+            {
+                method: "POST"
+            }
+        );
+
+        const data = await response.json();
+
+        console.log(data);
+
+        if (response.ok) {
+            result.textContent = "Campaign created successfully!";
+            await loadCampaigns();
+        } else {
+            result.textContent = data.detail || "Failed to create campaign";
+        }
+    });
+        loadCampaigns();
+    </script>
+</body>
+</html>
